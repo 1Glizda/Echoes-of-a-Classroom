@@ -67,10 +67,11 @@ jobs:
           
     - name: ItchIO Upload
       if: startsWith(github.ref, 'refs/heads/release/') # Skip this step for prerelease branch
-      uses: Ayowel/butler-to-itch@v1.0.0
+      uses: Ayowel/butler-to-itch@v1.2.0
       with:
         action: "push"
         install_dir: ~/.butler
+        butler_source: "https://broth.itch.zone/butler"
 
         ###### Push options ######
         # Your butler key (see https://itch.io/user/settings/api-keys)
