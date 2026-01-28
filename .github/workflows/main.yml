@@ -1,5 +1,4 @@
 name: Ren'Py Autobuild + Deploy (Creeeples v1.0.0)
-
 on:
   push:
     branches:
@@ -16,32 +15,24 @@ jobs:
     - name: Extract Version from Branch Name
       id: extract_version
       run: |
-          echo "old GITHUB_REF is $GITHUB_REF"
-          GITHUB_REF=$(echo $GITHUB_REF | sed -e "s#refs/heads/\(release\|prerelease\)/##g")
-          echo "::set-output name=ref::$GITHUB_REF"
+          GITHUB_REF_CLEAN=$(echo ${GITHUB_REF#refs/heads/} | sed -e "s#\(release\|prerelease\)/##g")
+          echo "ref=$GITHUB_REF_CLEAN" >> $GITHUB_OUTPUT
       env:
         GITHUB_REF: ${{ github.ref }}
 
-    - name: Format Release Name
-      id: format_release_name
-      run: |
-        echo "::set-output name=release_name::Release-${{ steps.extract_version.outputs.ref }}"
-      env:
-        VERSION: ${{ steps.extract_version.outputs.ref }}
-        
     - name: Format Release Tag
       id: format_tag_name
       run: |
-        echo "::set-output name=tag_name::v${{ steps.extract_version.outputs.ref }}"
-      env:
-        VERSION: ${{ steps.extract_version.outputs.ref }}
-        
-    - name: Build VN Project
+        echo "tag_name=v${{ steps.extract_version.outputs.ref }}" >> $GITHUB_OUTPUT
+
+    - name: Build VN Project (Web)
       id: build_project
       uses: creeeples/renpy-docker-builder@v1.0.2
       with:
         sdk-version: '8.1.1'
         project-dir: '.'
+        # This forces Ren'Py to only build the Web/HTML5 version
+        package: 'web'
       env:
         SDL_AUDIODRIVER: dummy
         SDL_VIDEODRIVER: dummy
@@ -51,60 +42,34 @@ jobs:
       with:
         token: ${{ github.token }}
         tag_name: ${{ steps.format_tag_name.outputs.tag_name }}
-        prerelease: ${{ startsWith(github.ref, 'refs/heads/prerelease/') }} # Set prerelease flag conditionally
+        prerelease: ${{ startsWith(github.ref, 'refs/heads/prerelease/') }}
       env:
           GH_TOKEN: ${{ github.token }}
 
-    - name: Upload All Build Folders
+    - name: Upload Web Build to GitHub
       run: |
-        for file in ${{ steps.build_project.outputs.dir }}/*.{zip,tar.bz2}; do
-        echo "Uploading $file"
-        asset_name=$(basename "$file")
-        gh release upload ${{ steps.format_tag_name.outputs.tag_name }} "$file" --clobber
+        for file in ${{ steps.build_project.outputs.dir }}/*-web.zip; do
+          echo "Uploading $file"
+          gh release upload ${{ steps.format_tag_name.outputs.tag_name }} "$file" --clobber
         done
       env:
           GH_TOKEN: ${{ github.token }}
-          
-    - name: ItchIO Upload
-      if: startsWith(github.ref, 'refs/heads/release/') # Skip this step for prerelease branch
+
+    - name: ItchIO Upload (Web)
+      if: startsWith(github.ref, 'refs/heads/release/')
       uses: Ayowel/butler-to-itch@v1.2.0
       with:
         action: "push"
         install_dir: ~/.butler
         butler_source: "https://broth.itch.zone/butler"
-
-        ###### Push options ######
-        # Your butler key (see https://itch.io/user/settings/api-keys)
-        # IMPORTANT NOTE: Do NOT Expose Your Butler Key! Doing so can cause VERY significant issues and allow someone to compromise your projects.
         butler_key: ${{ secrets.BUTLER_KEY }}
-        
-        # The itch username of the user that distributes the game
         itch_user: "1Glizda"
-        
-        # The name of the game in the project's url
         itch_game: "echoes-of-a-classroom"
-        
-        # The game version number
         version: "${{ steps.format_tag_name.outputs.tag_name }}"
-        
-        # The files to push to itch.
-        # File paths support globing and may start with a channel name.
-        # NOTE: ONLY ONE CHANNEL IS ALLOWED AT THIS TIME. 
+        # This pushes the web zip to the 'HTML5' channel on Itch
         files: |
-          mac ${{ steps.build_project.outputs.dir }}/*-mac.zip
-          linux ${{ steps.build_project.outputs.dir }}/*-linux.tar.bz2
-          windows ${{ steps.build_project.outputs.dir }}/*-pc.zip
-          
-        # If no channel is provided for a file, to generate one from the
-        # file's name.
-        # NOTE: Enabling this may break the integration! Please use defined file types!
+          web ${{ steps.build_project.outputs.dir }}/*-web.zip
         auto_channel: false
-
-        ###### Install options ######
-        # Whether to verify the downloaded Butler archive's signature
-        check_signature: true
-        
-        # Whether to update the PATH variable to include Butler's
-        # install directory
+        check_signature: false
         update_path: false
         butler_version: "latest"
