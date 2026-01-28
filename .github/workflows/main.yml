@@ -1,4 +1,4 @@
-name: Ren'Py Autobuild + Deploy (Creeeples v1.0.0)
+name: Ren'Py Autobuild + Deploy (Web Only)
 on:
   push:
     branches:
@@ -8,6 +8,8 @@ on:
 jobs:
   build-renpy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Grants permission to upload releases
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -25,13 +27,13 @@ jobs:
       run: |
         echo "tag_name=v${{ steps.extract_version.outputs.ref }}" >> $GITHUB_OUTPUT
 
-    - name: Build VN Project (Web)
+    - name: Build VN Project (Web Only)
       id: build_project
       uses: creeeples/renpy-docker-builder@v1.0.2
       with:
         sdk-version: '8.1.1'
         project-dir: '.'
-        # This forces Ren'Py to only build the Web/HTML5 version
+        # Forces Ren'Py to build ONLY the Web/HTML5 version
         package: 'web'
       env:
         SDL_AUDIODRIVER: dummy
@@ -46,9 +48,16 @@ jobs:
       env:
           GH_TOKEN: ${{ github.token }}
 
+    # Added a debug step to list files so we can see the exact name if it fails
+    - name: Debug - List Built Files
+      run: |
+        echo "Listing files in build directory:"
+        ls -R ${{ steps.build_project.outputs.dir }}
+
     - name: Upload Web Build to GitHub
       run: |
-        for file in ${{ steps.build_project.outputs.dir }}/*-web.zip; do
+        # Changed wildcard to *.zip to catch any zip file generated
+        for file in ${{ steps.build_project.outputs.dir }}/*.zip; do
           echo "Uploading $file"
           gh release upload ${{ steps.format_tag_name.outputs.tag_name }} "$file" --clobber
         done
@@ -66,9 +75,9 @@ jobs:
         itch_user: "1Glizda"
         itch_game: "echoes-of-a-classroom"
         version: "${{ steps.format_tag_name.outputs.tag_name }}"
-        # This pushes the web zip to the 'HTML5' channel on Itch
+        # We use *.zip here too. Since we only built 'web', this is safe.
         files: |
-          web ${{ steps.build_project.outputs.dir }}/*-web.zip
+          web ${{ steps.build_project.outputs.dir }}/*.zip
         auto_channel: false
         check_signature: false
         update_path: false
