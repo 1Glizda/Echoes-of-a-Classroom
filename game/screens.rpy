@@ -565,7 +565,7 @@ screen about():
             if gui.about:
                 text "[gui.about!t]\n"
 
-            text _("Made with {a=https://www.renpy.org/}Ren'Py{/a} [renpy.version_only].\n\n[renpy.license!t]")
+            text _("Made by 5 inspired students of UNATC Bucharest, Art of Game Design program. \n\nShoutout to Natalia for her vision as a Project Manager.\nAlso to Anisia, Georgiana & Sânziana for their long hours spent on Art!\n\n *written by Bobo, the Programmer.")
 
 
 style about_label is gui_label
