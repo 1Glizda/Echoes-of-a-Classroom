@@ -1,165 +1,5 @@
-﻿# --- 1. DEFINE VARS & LOGIC ---
-default smart = 4
-default positiveness = 4
-default confidence = 4
-default current_tier = "medium"
-default last_music_tier = "low"
-default new_tier = "medium"
-
-init python:
-    import random
-
-    # --- DEFINE MUSIC PLAYLISTS ---
-    playlist_high = ["audio/music/happy_1.mp3", "audio/music/happy_2.mp3", "audio/music/happy_3.mp3"]
-    
-    playlist_med  = ["audio/music/neutral_1.mp3", "audio/music/neutral_2.mp3"]
-    
-    playlist_low  = ["audio/music/sad_1.mp3", "audio/music/sad_2.mp3", "audio/music/sad_3.mp3"]
-
-    def update_visual_state():
-        # Calculate the Tier
-        avg_stat = (store.smart + store.positiveness + store.confidence) / 3.0
-
-        if avg_stat >= 6:
-            store.current_tier = "high"
-        elif avg_stat >= 3:
-            store.current_tier = "medium"
-        else:
-            store.current_tier = "low"  
-            
-        update_music_state(store.current_tier)
-
-    def update_music_state(new_tier):
-        # FIXED: We use 'store.last_music_tier' to access the saved variable
-        if new_tier != store.last_music_tier:            
-            if new_tier == "high":
-                track = renpy.random.choice(playlist_high)
-            elif new_tier == "medium":
-                track = renpy.random.choice(playlist_med)
-            else: # low
-                track = renpy.random.choice(playlist_low)
-            
-            # Play the track
-            if track:
-                renpy.music.play(track, fadeout=2.0, fadein=2.0, loop=True)
-            
-            # Update the saved variable
-            store.last_music_tier = new_tier
-
-    # Helper function to change stats cleanly in dialogue
-    def change_stat(stat_name, amount):
-        current_val = getattr(store, stat_name)
-        new_val = max(0, min(10, current_val + amount))
-        setattr(store, stat_name, new_val)
-        update_visual_state()
-
-# --- 2. SHADER & TRANSFORMS ---
-init python:
-    renpy.register_shader("custom.radial_bar", variables="""
-        uniform float u_progress;
-        uniform float u_radius_crop;
-        varying vec2 v_tex_coord;
-        attribute vec2 a_tex_coord;
-    """, vertex_200="""
-        v_tex_coord = a_tex_coord;
-    """, fragment_functions="""
-        float get_angle(vec2 pos) {
-            float angle = atan(pos.x, -pos.y);
-            if (angle < 0.0) angle += 6.28318;
-            return angle / 6.28318;
-        }
-    """, fragment_200="""
-        vec2 center = vec2(0.5, 0.5);
-        vec2 dist_vec = v_tex_coord - center;
-        
-        // 1. CIRCLE CROP
-        if (length(dist_vec) > 0.495) {
-            discard; 
-        }
-
-        // 2. RADIAL CROP
-        if (u_radius_crop > 0.5) { 
-            if (get_angle(dist_vec) > u_progress) {
-                discard;
-            }
-        }
-    """)
-
-# Apply shader to the colored circles
-transform radial_fill(score, total=10):
-    shader "custom.radial_bar"
-    u_progress (score / float(total))
-    u_radius_crop 1.0 
-
-# Apply shader to the white circles (just makes them round)
-transform just_circle:
-    shader "custom.radial_bar"
-    u_progress 1.0
-    u_radius_crop 0.0 
-
-
-# --- 1. THE CLASSROOM INTERACTION SCREEN ---
-screen classroom_selector(available_chars):
-    
-    # --- A. DEFINE THE VISUAL SLOTS (Position & Scale) ---
-    # These are the empty "chairs" on screen. 
-    # The game will fill them in order (1st char -> 1st slot, etc.)
-    $ character_slots = [
-        (-200, 400, 0.65),  # Slot 1 (Left)
-        (300, 400, 0.65),   # Slot 2 (Center)
-        (800, 400, 0.65),   # Slot 3 (Center-Right)
-        (1300, 400, 0.65)   # Slot 4 (Far Right)
-    ]
-
-    # --- B. DEFINE HOVER EXPRESSIONS (Personality) ---
-    # This ensures that even if Lia moves seats, she still uses "lia thinking"
-    $ hover_map = {
-        "lia": "thinking",
-        "dorian": "smirking",
-        "ana": "smiling",
-        "mara": "smiling",
-        "jacob": "frowning",
-        "sofia": "smiling"
-    }
-
-    # --- C. DYNAMIC PLACEMENT LOOP ---
-    # We loop through the characters currently in the room
-    for index, char_name in enumerate(available_chars):
-        
-        # Ensure we don't crash if we have more characters than slots
-        if index < len(character_slots):
-            
-            # 1. Get Position from the SLOT index
-            $ current_x, current_y, current_zoom = character_slots[index]
-            
-            # 2. Get Expression from the CHARACTER name
-            # If a name isn't found, it defaults to "neutral" to prevent crashing
-            $ current_hover_expression = hover_map.get(char_name, "neutral")
-
-            imagebutton:
-                # This constructs the image name: e.g. "lia neutral" / "lia thinking"
-                idle char_name + " neutral"
-                hover char_name + " " + current_hover_expression
-                
-                # Apply the position
-                xpos current_x
-                ypos current_y
-                
-                focus_mask True
-                action Return(char_name)
-                
-                # Apply the zoom
-                at transform:
-                    zoom current_zoom
-
-    # NEXT SCENE BUTTON
-    textbutton "Go to Next Scene":
-        xalign 0.98 yalign 0.05
-        padding (20, 20)
-        background "#00000088"
-        action Return("next_scene")
-
-# --- 3. THE LOGIC CONTROLLER ---
+﻿
+# --- 1. THE LOGIC CONTROLLER ---
 default current_quiz_number = 1
 
 label run_post_quiz_logic:
@@ -197,297 +37,8 @@ label run_post_quiz_logic:
             
             jump .classroom_loop
 
-# --- 4. THE HUD SCREEN ---
-screen status_hud():
-    zorder 100
-    
-    hbox:
-        xalign 0.05
-        yalign 0.05
-        spacing 25
 
-        # --- SMART (Blue) ---
-        fixed:
-            xysize (100, 100)
-            
-            add Flatten(Solid("#2E5BFF")) at radial_fill(smart):
-                xysize (100, 100) align (0.5, 0.5)
-            
-            add Flatten(Solid("#FFFFFF")) at just_circle:
-                xysize (80, 80) align (0.5, 0.5)
-                
-            add "gui/hud/icon_smart.png":
-                align (0.5, 0.5) fit "contain" zoom 0.6
-
-        # --- CONFIDENCE (Yellow) ---
-        fixed:
-            xysize (100, 100)
-            
-            add Flatten(Solid("#FFD700")) at radial_fill(confidence):
-                xysize (100, 100) align (0.5, 0.5)
-            
-            add Flatten(Solid("#FFFFFF")) at just_circle:
-                xysize (80, 80) align (0.5, 0.5)
-                
-            add "gui/hud/icon_confidence.png":
-                align (0.5, 0.5) fit "contain" zoom 0.6
-
-        # --- POSITIVENESS (Red) ---
-        fixed:
-            xysize (100, 100)
-            
-            add Flatten(Solid("#FF4B2B")) at radial_fill(positiveness):
-                xysize (100, 100) align (0.5, 0.5)
-            
-            add Flatten(Solid("#FFFFFF")) at just_circle:
-                xysize (80, 80) align (0.5, 0.5)
-            
-            add "gui/hud/icon_positiveness.png":
-                align (0.5, 0.5) fit "contain" zoom 0.6
-
-# --- 5. ASSET DEFINITION ---
-# Added 'transition=dissolve for the smooth fade.
-
-# BACKGROUNDS
-image bg classroom1 = ConditionSwitch(
-    "current_tier == 'high'", "images/bg/CLASS 1 ( watercolor state).png",
-    "current_tier == 'medium'", "images/bg/class 1 neutral state.png",
-    "current_tier == 'low'", "images/bg/CLASS 1 ( grey state).png",
-    transition=dissolve
-)
-
-image bg classroom2 = ConditionSwitch(
-    "current_tier == 'high'", "images/bg/CLASS 2 ( watercolor state).png",
-    "current_tier == 'medium'", "images/bg/CLASS 2 ( neutral state).png",
-    "current_tier == 'low'", "images/bg/CLASS 2 ( grey state).png",
-    transition=dissolve
-)
-
-image bg walkhome = ConditionSwitch(
-    "current_tier == 'high'", "images/bg/WALK HOME(watercolor state).png",
-    "current_tier == 'medium'", "images/bg/WALK HOME( neutral state).png",
-    "current_tier == 'low'", "images/bg/WALK HOME ( grey state).png",
-    transition=dissolve
-)
-
-# Static Images
-image bg shop = "images/bg/SHOP (grey state ).png"
-image bg room = "images/bg/room grey state.png"
-image bg school gate = "images/bg/SCHOOL GATE ( grey state).png"
-
-# CHARACTERS
-# LIA POSES
-image lia fullbody= ConditionSwitch(
-    "current_tier == 'high'", "images/fullbody/watercolor state/lia fullbody watercolor.PNG",
-    "current_tier == 'medium'", "images/fullbody/neutral state/lia fullbody neutral.PNG",
-    "current_tier == 'low'", "images/fullbody/grey state/lia fullbody grey.PNG",
-    transition=dissolve 
-)
-
-image lia neutral = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/lia/lia neutral face watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/lia/lia neutral face neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/lia/lia neutral face grey.PNG",
-    transition=dissolve
-)
-
-image lia thinking = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/lia/lia pensive watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/lia/lia pensive neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/lia/lia pensive grey.PNG",
-    transition=dissolve
-)
-
-image lia sad = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/lia/lia sad watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/lia/lia sad neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/lia/lia sad grey.PNG",
-    transition=dissolve
-)
-
-image lia smiling = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/lia/lia smiling watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/lia/lia smiling neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/lia/lia smiling grey.PNG",
-    transition=dissolve
-)
-
-# ANA POSES
-image ana fullbody = ConditionSwitch(
-    "current_tier == 'high'", "images/fullbody/watercolor state/ana fullbody watercolor.PNG",
-    "current_tier == 'medium'", "images/fullbody/neutral state/ana fullbody neutral.PNG",
-    "current_tier == 'low'", "images/fullbody/grey state/ana fullbody grey.PNG",
-    transition=dissolve
-)
-
-image ana frowning = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/ana/ana frowning watercolor .PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/ana/ana frowning neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/ana/ana frowning grey.PNG",
-    transition=dissolve
-)
-
-image ana neutral = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/ana/ana neutral face watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/ana/ana neutral face neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/ana/ana neutral face grey.PNG",
-    transition=dissolve
-)
-
-image ana sad = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/ana/ana sad watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/ana/ana sad neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/ana/ana sad grey.PNG",
-    transition=dissolve
-)
-
-image ana smiling = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/ana/ana smiling watercolor .PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/ana/ana smiling neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/ana/ana smiling grey.PNG",
-    transition=dissolve
-)
-
-# DORIAN POSES
-image dorian fullbody = ConditionSwitch(
-    "current_tier == 'high'", "images/fullbody/watercolor state/dorian fullbody watercolor.PNG",
-    "current_tier == 'medium'", "images/fullbody/neutral state/dorian fullbody neutral.PNG",
-    "current_tier == 'low'", "images/fullbody/grey state/dorian fullbody grey.PNG",
-    transition=dissolve
-)
-
-image dorian frowning = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/dorian/dorian frowning watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/dorian/dorian frowning neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/dorian/dorian frowning grey.PNG",
-    transition=dissolve
-)
-
-image dorian neutral = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/dorian/dorian neutral face watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/dorian/dorian neutral face neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/dorian/dorian neutral face grey.PNG",
-    transition=dissolve
-)
-
-image dorian smiling = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/dorian/dorian smiling watercolor .PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/dorian/dorian smiling neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/dorian/dorian smiling grey.PNG",
-    transition=dissolve
-)
-
-image dorian smirking = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/dorian/dorian smirking watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/dorian/dorian smirking neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/dorian/dorian smirking grey.PNG",
-    transition=dissolve
-)
-
-# JACOB POSES
-# Note: I matched the extra space in "neutral .PNG" and the typos "movking" and "javob"
-image jacob fullbody = ConditionSwitch(
-    "current_tier == 'high'", "images/fullbody/watercolor state/jacob fullbody watercolor.PNG",
-    "current_tier == 'medium'", "images/fullbody/neutral state/jacob fullbody neutral .PNG",
-    "current_tier == 'low'", "images/fullbody/grey state/jacob fullbody grey.PNG",
-    transition=dissolve
-)
-
-image jacob frowning = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/jacob/javob frowning watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/jacob/jacob frowning neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/jacob/jacob frowning grey.PNG",
-    transition=dissolve
-)
-
-image jacob mocking = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/jacob/jacob mocking watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/jacob/jacob mocking neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/jacob/jacob movking grey.PNG",
-    transition=dissolve
-)
-
-image jacob neutral = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/jacob/jacob neutral face watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/jacob/jacob neutral face neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/jacob/jacob neutral face grey.PNG",
-    transition=dissolve
-)
-
-image jacob smiling = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/jacob/jacob smiling watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/jacob/jacob smiling neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/jacob/jacob smiling grey.PNG",
-    transition=dissolve
-)
-
-# MARA POSES
-image mara fullbody = ConditionSwitch(
-    "current_tier == 'high'", "images/fullbody/watercolor state/mara fullbody watercolor.PNG",
-    "current_tier == 'medium'", "images/fullbody/neutral state/mara fullbody neutral.PNG",
-    "current_tier == 'low'", "images/fullbody/grey state/mara fullbody grey.PNG",
-    transition=dissolve
-)
-
-image mara neutral = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/mara/mara neutral face watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/mara/mara neutral face neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/mara/mara neutral face grey.PNG",
-    transition=dissolve
-)
-
-image mara sad = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/mara/mara sad watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/mara/mara sad neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/mara/mara sad grey.PNG",
-    transition=dissolve
-)
-
-image mara smiling = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/mara/mara smiling watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/mara/mara smiling neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/mara/mara smiling grey.PNG",
-    transition=dissolve
-)
-
-# SOFIA POSES
-image sofia fullbody = ConditionSwitch(
-    "current_tier == 'high'", "images/fullbody/watercolor state/sofia fullbody watercolor.PNG",
-    "current_tier == 'medium'", "images/fullbody/neutral state/sofia fullbody neutral.PNG",
-    "current_tier == 'low'", "images/fullbody/grey state/sofia fullbody grey.PNG",
-    transition=dissolve
-)
-
-image sofia neutral = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/sofia/sofia neutral face watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/sofia/sofia neutral face neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/sofia/sofia neutral face grey.PNG",
-    transition=dissolve
-)
-
-image sofia sad = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/sofia/sofia sad watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/sofia/sofia sad neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/sofia/sofia sad grey.PNG",
-    transition=dissolve
-)
-
-image sofia smiling = ConditionSwitch(
-    "current_tier == 'high'", "images/halfbody/watercolor state/sofia/sofia smiling watercolor.PNG",
-    "current_tier == 'medium'", "images/halfbody/neutral state/sofia/sofia smiling neutral.PNG",
-    "current_tier == 'low'", "images/halfbody/grey state/sofia/sofia smiling grey.PNG",
-    transition=dissolve
-)
-
-# LADY AT THE STORE
-image shoplady = ConditionSwitch(
-    "current_tier == 'high'", "images/doamna de la magazin/watercolor.PNG",
-    "current_tier == 'medium'", "images/doamna de la magazin/neutral.PNG",
-    "current_tier == 'low'", "images/doamna de la magazin/grey.PNG",
-    transition=dissolve
-)
-
-# --- 6. CHARACTERS ---
+# --- 2. CHARACTERS ---
 define player = Character("The Protagonist")
 define lia = Character("Lia")
 define dorian = Character("Dorian")
@@ -498,7 +49,7 @@ define sofia = Character("Miss Sofia")
 define shoplady = Character("Shop Lady")
 
 # ==========================================
-# === 7. ACTUAL GAME LOOP ===
+# === 3. ACTUAL GAME LOOP ===
 # ==========================================
 label start:
     # Initialize Visuals & Music at the start
@@ -519,18 +70,30 @@ label start:
     scene bg school gate with dissolve
     player "Here goes nothing."
 
-    # --- QUIZ 1 ---
+    # ==========================================
+    # === QUIZ 1: LITERATURE ===
+    # ==========================================
     $ current_quiz_number = 1
     scene bg classroom1 with dissolve
-    # PLACEHOLDER: FIRST QUIZ LOGIC HERE
+    
+    "The first period starts. Mrs. Mara places the Literature quiz on your desk."
+    
+    # Calls the Literature quiz (Question index 0)
+    call start_quiz("Literature")
     
     "The first quiz ends."
     call run_post_quiz_logic
 
-    # --- QUIZ 2 ---
+    # ==========================================
+    # === QUIZ 2: MATH ===
+    # ==========================================
     $ current_quiz_number = 2
     scene bg classroom2 with dissolve
-    # PLACEHOLDER: SECOND QUIZ LOGIC HERE
+    
+    "You move to the next class. Jacob is writing equations on the board."
+    
+    # Calls the Math quiz (Question index 0)
+    call start_quiz("Math")
 
     "The second quiz ends."
     call run_post_quiz_logic
@@ -546,18 +109,30 @@ label start:
     player "It's scary how easy it is to change who you are just because someone else tells you who they think you are."
     player "Am I actually growing or just getting changed by whatever environment I happen to be in?"
 
-    # --- QUIZ 3 ---
+    # ==========================================
+    # === QUIZ 3: PHYSICS ===
+    # ==========================================
     $ current_quiz_number = 3
     scene bg classroom1 with dissolve
-    # PLACEHOLDER: THIRD QUIZ LOGIC HERE
+    
+    "Back inside. The Physics test is waiting."
+    
+    # Calls the Physics quiz (Question index 0)
+    call start_quiz("Physics")
 
     "The third quiz ends."
     call run_post_quiz_logic
 
-    # --- QUIZ 4 ---
+    # ==========================================
+    # === QUIZ 4: CHEMISTRY ===
+    # ==========================================
     $ current_quiz_number = 4
     scene bg classroom2 with dissolve
-    # PLACEHOLDER: FOURTH QUIZ LOGIC HERE
+    
+    "The air smells faintly of chemicals. It's time for the next subject."
+    
+    # Calls the Chemistry quiz (Question index 0)
+    call start_quiz("Chemistry")
 
     "The fourth quiz ends."
     call run_post_quiz_logic
@@ -583,32 +158,50 @@ label start:
     shoplady "Well... whatever kind of day it was, don't forget to eat something. Brains run weird when the rest of you is running on fumes."
     hide shoplady
 
-    # --- QUIZ 5 ---
+    # ==========================================
+    # === QUIZ 5: GEOGRAPHY ===
+    # ==========================================
     $ current_quiz_number = 5
     scene bg classroom1 with dissolve
-    # PLACEHOLDER: FIFTH QUIZ LOGIC HERE
+    
+    "You return for the afternoon sessions. A map is pulled down over the board."
+    
+    # Calls the Geography quiz (Question index 0)
+    call start_quiz("Geography")
 
     "The fifth quiz ends."
     call run_post_quiz_logic
 
-    # --- QUIZ 6 ---
+    # ==========================================
+    # === QUIZ 6: HISTORY ===
+    # ==========================================
     $ current_quiz_number = 6
     scene bg classroom2 with dissolve
-    # PLACEHOLDER: SIXTH QUIZ LOGIC HERE
+    
+    "Miss Sofia looks at the class with a gentle expression before starting the History test."
+    
+    # Calls the History quiz (Question index 0)
+    call start_quiz("History")
 
     "The sixth quiz ends."
     call run_post_quiz_logic
 
-    # --- QUIZ 7 ---
+    # ==========================================
+    # === QUIZ 7: ARTS ===
+    # ==========================================
     $ current_quiz_number = 7
     scene bg classroom1 with dissolve
-    # PLACEHOLDER: SEVENTH QUIZ LOGIC HERE
+    
+    "The final subject of the day. You try to focus one last time."
+    
+    # Calls the Arts quiz (Question index 0)
+    call start_quiz("Arts")
 
     "The seventh quiz ends."
     call run_post_quiz_logic
 
     # --- ENDINGS ---
-    # [cite: 783]
+    #
     if current_tier == "high":
         jump good_ending
     elif current_tier == "medium":
@@ -679,7 +272,6 @@ label interact_lia:
                 "Thanks, Lia. That actually means more than you think.":
                     show lia thinking with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
         elif current_tier == "medium":
             lia "I think you did alright! Not perfect, but definitely not bad!"
             menu:
@@ -691,7 +283,6 @@ label interact_lia:
                 "Thanks... you're really kind about this.":
                     show lia thinking with dissolve
                     $ change_stat("positiveness", 2)
-                    pause 1.2
                 "Forget it. I always mess up.":
                     $ change_stat("confidence", -2)
 
@@ -704,7 +295,6 @@ label interact_lia:
                 "Yeah... I'm glad I didn't mess up completely.":
                     show lia thinking with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
         elif current_tier == "medium":
             lia "Not bad at all! Maybe next time you'll do even better!"
             menu:
@@ -716,7 +306,6 @@ label interact_lia:
                 "I hope so...":
                     show lia thinking with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
                 "I hate feeling so slow.":
                     $ change_stat("confidence", -2)
 
@@ -728,14 +317,12 @@ label interact_lia:
                     $ change_stat("positiveness", 2)
                 "Guess today was just... a good day.":
                     show lia thinking with dissolve
-                    pause 1.2
         elif current_tier == "medium":
             show lia thinking at center with dissolve
             lia "You look a little tired but I feel like you're keeping yourself together. Did you do okay on this quiz?"
             menu:
                 "It was alright, not great but not terrible.":
                     show lia neutral with dissolve
-                    pause 1.2
                 "Honestly, I'm glad it's over.":
                     pass
         else:
@@ -744,7 +331,6 @@ label interact_lia:
                 "I'm trying... it just feels like people are pulling at me if I'm not careful enough.":
                     show lia thinking with dissolve
                     $ change_stat("positiveness", 1)
-                    pause 1.2
                 "Forget it.":
                     $ change_stat("positiveness", -2)
 
@@ -756,7 +342,6 @@ label interact_lia:
                 "Haha, guess I'm finally finding my rhythm.":
                     show lia smiling with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
                 "It felt good being in control for once.":
                     pass
         elif current_tier == "medium":
@@ -773,7 +358,6 @@ label interact_lia:
                 "Yeah... I felt like everything slipped away from me.":
                     show lia thinking with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
                 "It was too much today.":
                     pass
 
@@ -785,7 +369,6 @@ label interact_lia:
                 "I'm trying not to.":
                     show lia smiling with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
                 "Sometimes being soft hurts.":
                     pass
         elif current_tier == "medium":
@@ -794,18 +377,15 @@ label interact_lia:
                 "I guess it does.":
                     show lia smiling with dissolve
                     $ change_stat("positiveness", 2)
-                    pause 1.2
                 "I'm just tired of counting losses.":
                     show lia thinking with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
         else:
             lia "You didn't even look up when the quiz ended... Are you okay?"
             menu:
                 "Yes... I just need some time to process all those quizzes... they are a lot.":
                     show lia thinking with dissolve
                     $ change_stat("positiveness", 2)
-                    pause 1.2
                 "I don't really know anymore.":
                     $ change_stat("positiveness", -2)
 
@@ -818,7 +398,6 @@ label interact_lia:
                 "Sometimes it already has.":
                     show lia thinking with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
         elif current_tier == "medium":
             show lia thinking at center with dissolve
             lia "You didn't really look relieved when it ended. Just...thoughtful."
@@ -851,7 +430,6 @@ label interact_lia:
                 "I saw parts of it I can't unsee.":
                     show lia sad with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
                 "I don't know which version was real anymore.":
                     pass
         else:
@@ -861,10 +439,10 @@ label interact_lia:
                 "Maybe I wasn't meant to be understood.":
                     show lia sad with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
                 "It changed me.":
                     pass
 
+    pause 0.8
     hide lia with dissolve
     return
 
@@ -892,11 +470,9 @@ label interact_dorian:
                 "That's the least I could do, I guess.":
                     show dorian smirking with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
                 "You really are obsessed with me failing, aren't you?":
                     show dorian frowning with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
         else:
             dorian "Rough day, huh? You look even worse than you feel."
             menu:
@@ -914,7 +490,6 @@ label interact_dorian:
                 "Guess I'm only getting better.":
                     show dorian smiling with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
         elif current_tier == "medium":
             dorian "I think you did fine, I guess. A few parts were tough but you handled them.. somehow."
             menu:
@@ -926,7 +501,6 @@ label interact_dorian:
                 "...I'll do better next time.":
                     show dorian smirking with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
                 "I hate that I can never keep it up with everyone.":
                     $ change_stat("confidence", -3)
 
@@ -938,18 +512,15 @@ label interact_dorian:
                     $ change_stat("confidence", 2)
                 "Whatever, man.":
                     show dorian frowning with dissolve
-                    pause 1.2
         elif current_tier == "medium":
             dorian "You don't look like a disaster. That's new. Did you guess well or something?"
             menu:
                 "Some questions made sense I guess.":
                     show dorian smirking with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
                 "I'm not discussing my strategy with you.":
                     show dorian frowning with dissolve
                     $ change_stat("confidence", 1)
-                    pause 1.2
         else:
             show dorian smirking at center with dissolve
             dorian "This quiz ate you alive, huh? You walked out like someone who forgot the alphabet."
@@ -966,7 +537,6 @@ label interact_dorian:
                 "You keep saying that, but my grades don't.":
                     show dorian frowning with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
                 "Believe what you want.":
                     pass
         elif current_tier == "medium":
@@ -977,7 +547,6 @@ label interact_dorian:
                 "You really enjoy this, don't you?":
                     show dorian smirking with dissolve
                     $ change_stat("positiveness", -1)
-                    pause 1.2
         else:
             show dorian smirking at center with dissolve
             dorian "Wow. You came out looking like this quiz personally attacked you. Did you even open the book to study?"
@@ -994,7 +563,6 @@ label interact_dorian:
                 "Maybe. But I'm still standing.":
                     show dorian frowning with dissolve
                     $ change_stat("confidence", 1)
-                    pause 1.2
                 "Say whatever you want.":
                     pass
         elif current_tier == "medium":
@@ -1005,7 +573,6 @@ label interact_dorian:
                 "You really hate seeing me okay.":
                     show dorian smirking with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
         else:
             show dorian smirking at center with dissolve
             dorian "Yikes. This quiz really messed you up, huh? That's what happens when you pretend you can keep up with the others."
@@ -1029,11 +596,9 @@ label interact_dorian:
                 "Thinking shouldn't be a weakness.":
                     show dorian frowning with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
                 "Maybe you're right.":
                     show dorian smirking with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
         else:
             show dorian smirking at center with dissolve
             dorian "This quiz proves it. The system works. Some people rise, some people... don't."
@@ -1043,7 +608,6 @@ label interact_dorian:
                 "Or maybe it's broken.":
                     show dorian frowning with dissolve
                     $ change_stat("confidence", -1)
-                    pause 1.2
 
     elif current_quiz_number == 7:
         if current_tier == "high":
@@ -1052,7 +616,6 @@ label interact_dorian:
                 "That doesn't mean it should be cruel.":
                     show dorian frowning with dissolve
                     $ change_stat("confidence", 1)
-                    pause 1.2
                 "I know.":
                     pass
         elif current_tier == "medium":
@@ -1063,7 +626,6 @@ label interact_dorian:
                 "Maybe I should have tried harder...":
                     show dorian smirking with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
         else:
             show dorian smirking at center with dissolve
             dorian "See? In the end, the system sorts everyone out. It always does."
@@ -1073,6 +635,7 @@ label interact_dorian:
                 "Or it just labeled me.":
                     pass
 
+    pause 0.8
     hide dorian with dissolve
     return
 
@@ -1108,11 +671,9 @@ label interact_ana:
                 "That would be... cool. Thanks.":
                     show ana smiling with dissolve
                     $ change_stat("smart", 2)
-                    pause 1.2
                 "Forget it. I don't need your pity.":
                     show ana frowning with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
 
     elif current_quiz_number == 2:
         if current_tier == "high":
@@ -1178,7 +739,6 @@ label interact_ana:
                 "I missed it completely.":
                     show ana frowning with dissolve
                     pass
-                    pause 1.2
         else:
             show ana frowning at center with dissolve
             ana "You panicked. I saw it. I bet you even jumped questions. Those quizzes punish that kind of rushing."
@@ -1202,7 +762,6 @@ label interact_ana:
                 "That makes sense. I did bad on this quiz.":
                     show ana sad with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
                 "It still felt overwhelming.":
                     pass
         else:
@@ -1223,7 +782,6 @@ label interact_ana:
                 "Too bad grades decide everything.":
                     show ana sad with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
         elif current_tier == "medium":
             ana "I don't know... I think I'm starting to doubt myself. It starts to feel like we're trained to optimize answers, not to understand."
             menu:
@@ -1264,6 +822,7 @@ label interact_ana:
                 "It's just not fair.":
                     $ change_stat("positiveness", -2)
 
+    pause 0.8
     hide ana with dissolve
     return
 
@@ -1314,7 +873,6 @@ label interact_mara:
                 "I'm never getting better, am I?":
                     show mara sad with dissolve
                     $ change_stat("confidence", -2)
-                    pause 1.2
         else:
             mara "You seem a bit tense... is something bothering you? Don't let it weigh you down too much. You also need to take care of your mental health."
             menu:
@@ -1337,7 +895,6 @@ label interact_mara:
                 "I'm okay. Just tired.":
                     show mara sad with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
                 "That quiz wasn't horrible, I guess.":
                     $ change_stat("positiveness", 2)
         else:
@@ -1357,7 +914,6 @@ label interact_mara:
                 "I don't think I trust myself.":
                     show mara neutral with dissolve
                     pass
-                    pause 1.2
         elif current_tier == "medium":
             mara "You seem a bit torn. Not defeated but not exactly confident. Want to tell me what felt off?"
             menu:
@@ -1382,7 +938,6 @@ label interact_mara:
                 "Sometimes it feels pointless.":
                     show mara neutral with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
         elif current_tier == "medium":
             mara "I'm proud of you for staying present, even when it was hard."
             menu:
@@ -1414,7 +969,6 @@ label interact_mara:
                 "I just wished someone noticed.":
                     show mara sad with dissolve
                     $ change_stat("positiveness", -2)
-                    pause 1.2
         else:
             mara "Don't beat yourself up too much for this quiz. I can see students learning empathy, resilience, patience... and none of it counts."
             menu:
@@ -1439,7 +993,6 @@ label interact_mara:
                 "That lie hurts people.":
                     show mara sad with dissolve
                     $ change_stat("positiveness", 2)
-                    pause 1.2
         else:
             mara "Some students come to school already carrying too much. And we still ask them to perform."
             menu:
@@ -1448,6 +1001,7 @@ label interact_mara:
                 "No one ever asks them why they can't perform.":
                     pass
 
+    pause 0.8
     hide mara with dissolve
     return
 
@@ -1468,7 +1022,6 @@ label interact_jacob:
                 "I'll take that as a compliment.":
                     show jacob smiling with dissolve
                     $ change_stat("confidence", 2)
-                    pause 1.2
                 "Thanks, I suppose.":
                     pass
         elif current_tier == "medium":
@@ -1487,7 +1040,6 @@ label interact_jacob:
                 "You know you really shouldn't talk to me like that, right?":
                     show jacob frowning with dissolve
                     $ change_stat("positiveness", 2)
-                    pause 1.2
 
     elif current_quiz_number == 2:
         if current_tier == "high":
@@ -1522,7 +1074,6 @@ label interact_jacob:
                 "Why do you always assume the worst?":
                     show jacob frowning with dissolve
                     pass
-                    pause 1.2
         elif current_tier == "medium":
             jacob "You hesitate often. Hesitation is a sign of weak fundamentals. Study. More."
             menu:
@@ -1631,6 +1182,7 @@ label interact_jacob:
                 "...Okay.":
                     $ change_stat("confidence", -2)
 
+    pause 0.8
     hide jacob with dissolve
     return
 
@@ -1803,5 +1355,6 @@ label interact_sofia:
                 "No one noticed.":
                     $ change_stat("positiveness", -1)
 
+    pause 0.8
     hide sofia with dissolve
     return
